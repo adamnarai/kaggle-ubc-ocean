@@ -1,0 +1,9 @@
+data
+results
+*.log
+.*
+!/.gitignore
+*.pklz
+src/wandb
+src/models
+
