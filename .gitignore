@@ -6,4 +6,5 @@ results
 *.pklz
 src/wandb
 src/models
+__pycache__
 
