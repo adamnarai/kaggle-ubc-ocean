@@ -53,7 +53,7 @@ class Trainer:
         self.model.train()
         
         train_loss = 0
-        for batch, (X, y) in tqdm(enumerate(self.train_dataloader), total=num_batches):
+        for X, y in tqdm(self.train_dataloader, total=num_batches):
             X, y = X.to(self.device), y.to(self.device)
 
             # Compute prediction error
@@ -77,7 +77,7 @@ class Trainer:
         test_loss = 0
         metric = 0
         with torch.no_grad():
-            for X, y in self.test_dataloader:
+            for X, y in tqdm(self.test_dataloader, total=num_batches):
                 X, y = X.to(self.device), y.to(self.device)
                 outputs = self.model(X)
                 _, preds = torch.max(outputs, 1)
