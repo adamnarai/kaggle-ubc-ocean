@@ -25,6 +25,8 @@ class Trainer:
     def train_epochs(self, num_epochs=None):
         if num_epochs is not None:
             self.num_epochs = num_epochs
+        if num_epochs == 0:
+            return self.model, 0
         since = time.time()
 
         for epoch in range(self.num_epochs):
