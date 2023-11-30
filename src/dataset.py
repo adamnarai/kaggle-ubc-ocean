@@ -49,7 +49,7 @@ def get_tiles_datasets(CFG, train_image_dir, df_train, df_validation):
     'train':
     transforms.Compose([
         transforms.Resize(CFG['img_size']),
-        transforms.RandomAffine(degrees=CFG['affine_degrees'], translate=CFG['affine_translate'], scale=CFG['affine_scale']),
+        transforms.RandomAffine(degrees=CFG['affine_degrees'], translate=CFG['affine_translate'], scale=CFG['affine_scale'], fill=255),
         transforms.RandomHorizontalFlip(),
         transforms.RandomVerticalFlip(),
         transforms.ToTensor(),
@@ -106,11 +106,39 @@ class UBCDataset(Dataset):
         if not os.path.exists(image_path):
             image_path = os.path.join(self.image_dir, f'{image_id}.png')
 
-        image = Image.open(image_path)
+        image = np.array(Image.open(image_path))
         label = self.labels[idx]
         
+        # Horizontal crop
+        x_noblack = np.where(image.sum(axis=(0, 2))!=0)[0][0]
+        image = image[:, x_noblack:, :]
+        x_black = np.where(image.sum(axis=(0, 2))==0)[0]
+        if x_black.size > 0 and x_black[0] > 512:
+            x_end = x_black[0]-1
+            image = image[:, :x_end, :]
+
+        # Vertical crop and black trimming
+        y_noblack = np.where(image.sum(axis=(1, 2))!=0)[0][0]
+        image = image[y_noblack:, :, :]
+        y_black = np.where(image.sum(axis=(1, 2))==0)[0]
+        if y_black.size > 0 and y_black[0] > 400:
+            y_end = y_black[0]-1
+            image = image[:y_end, :, :]
+
+        x_black = np.where(image.sum(axis=(0, 2))==0)[0]
+        if x_black.size > 0 and x_black[0] > 400:
+            x_end = x_black[0]-1
+            image = image[:, :x_end, :]
+
+        black_bg = np.sum(image, axis=2) == 0
+        image[black_bg, :] = 255
+        
         if self.transform:
-            image = self.transform(image)
+            try:
+                image = self.transform(Image.fromarray(image))
+            except(ValueError):
+                print(image_path)
+                print(image.shape)
 
         return image, label
     
@@ -119,13 +147,48 @@ class SideCrop(nn.Module):
         size = min(image.size)
         new_image = transforms.functional.crop(image, 0, 0, size, size)
         return new_image
+    
+class Affine(nn.Module):
+    def __init__(self, scale):
+        super().__init__()
+        self.scale = scale
+    def forward(self, image):
+        new_image = transforms.functional.affine(image, angle=0, translate=(0, 0), scale=self.scale, shear=0, fill=255)
+        return new_image
+    
+class SmartCrop(nn.Module):
+    def forward(self, image):
+        image = np.array(image)
+        # Horizontal crop
+        x_noblack = np.where(image.sum(axis=(0, 2))!=0)[0][0]
+        image = image[:, x_noblack:, :]
+        x_black = np.where(image.sum(axis=(0, 2))==0)[0]
+        if x_black.size > 0 and x_black[0] > 400:
+            x_end = x_black[0]-1
+            image = image[:, :x_end, :]
+
+        # Vertical crop and black trimming
+        y_noblack = np.where(image.sum(axis=(1, 2))!=0)[0][0]
+        image = image[y_noblack:, :, :]
+        y_black = np.where(image.sum(axis=(1, 2))==0)[0]
+        if y_black.size > 0 and y_black[0] > 400:
+            y_end = y_black[0]-1
+            image = image[:y_end, :, :]
+
+        x_black = np.where(image.sum(axis=(0, 2))==0)[0]
+        if x_black.size > 0 and x_black[0] > 400:
+            x_end = x_black[0]-1
+            image = image[:, :x_end, :]
+
+        return Image.fromarray(image)
 
 def get_datasets(CFG, train_image_dir, train_thumbnail_dir, df_train, df_validation):
     transform = {
     'train':
     transforms.Compose([
-        SideCrop(),
-        transforms.RandomAffine(degrees=CFG['affine_degrees'], translate=CFG['affine_translate'], scale=CFG['affine_scale']),
+        transforms.RandomAffine(degrees=CFG['affine_degrees'], translate=CFG['affine_translate'], scale=CFG['affine_scale'], fill=255),
+        transforms.Resize(CFG['img_size']),
+        transforms.CenterCrop(CFG['img_size']),
         transforms.RandomHorizontalFlip(),
         transforms.RandomVerticalFlip(),
         transforms.ToTensor(),
@@ -133,7 +196,9 @@ def get_datasets(CFG, train_image_dir, train_thumbnail_dir, df_train, df_validat
     ]),
     'validation':
      transforms.Compose([
-        SideCrop(),
+        Affine(scale=1.2),
+        transforms.Resize(CFG['img_size']),
+        transforms.CenterCrop(CFG['img_size']),
         transforms.ToTensor(),
         transforms.Normalize(mean=CFG['img_color_mean'], std=CFG['img_color_std'])
     ])}
