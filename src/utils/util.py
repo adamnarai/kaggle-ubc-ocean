@@ -47,6 +47,8 @@ class HEDJitter(object):
         return Image.fromarray(rsimg)
 
     def __call__(self, img):
+        self.alpha = np.random.uniform(1-self.theta, 1+self.theta, (1, 3))
+        self.betti = np.random.uniform(-self.theta, self.theta, (1, 3))
         return self.adjust_HED(img, self.alpha, self.betti)
 
     def __repr__(self):

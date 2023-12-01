@@ -93,6 +93,7 @@ class UBCDataset(Dataset):
         self.df = df
         self.image_ids = self.df['image_id'].values
         self.labels = self.df['label'].values
+        self.is_tma = self.df['is_tma'].values
         self.image_dir = image_dir
         self.thumbnail_dir = thumbnail_dir
         self.transform = transform
@@ -109,34 +110,11 @@ class UBCDataset(Dataset):
         image = np.array(Image.open(image_path))
         label = self.labels[idx]
         
-        # Horizontal crop
-        x_noblack = np.where(image.sum(axis=(0, 2))!=0)[0][0]
-        image = image[:, x_noblack:, :]
-        x_black = np.where(image.sum(axis=(0, 2))==0)[0]
-        if x_black.size > 0 and x_black[0] > 512:
-            x_end = x_black[0]-1
-            image = image[:, :x_end, :]
-
-        # Vertical crop and black trimming
-        y_noblack = np.where(image.sum(axis=(1, 2))!=0)[0][0]
-        image = image[y_noblack:, :, :]
-        y_black = np.where(image.sum(axis=(1, 2))==0)[0]
-        if y_black.size > 0 and y_black[0] > 400:
-            y_end = y_black[0]-1
-            image = image[:y_end, :, :]
-
-        x_black = np.where(image.sum(axis=(0, 2))==0)[0]
-        if x_black.size > 0 and x_black[0] > 400:
-            x_end = x_black[0]-1
-            image = image[:, :x_end, :]
-
-        black_bg = np.sum(image, axis=2) == 0
-        image[black_bg, :] = 255
-        
         if self.transform:
             try:
                 image = self.transform(Image.fromarray(image))
             except(ValueError):
+                print('Transform error')
                 print(image_path)
                 print(image.shape)
 
@@ -163,7 +141,7 @@ class SmartCrop(nn.Module):
         x_noblack = np.where(image.sum(axis=(0, 2))!=0)[0][0]
         image = image[:, x_noblack:, :]
         x_black = np.where(image.sum(axis=(0, 2))==0)[0]
-        if x_black.size > 0 and x_black[0] > 400:
+        if x_black.size > 0 and x_black[0] > 512:
             x_end = x_black[0]-1
             image = image[:, :x_end, :]
 
@@ -180,22 +158,29 @@ class SmartCrop(nn.Module):
             x_end = x_black[0]-1
             image = image[:, :x_end, :]
 
+        black_bg = np.sum(image, axis=2) == 0
+        image[black_bg, :] = 255
+
         return Image.fromarray(image)
 
 def get_datasets(CFG, train_image_dir, train_thumbnail_dir, df_train, df_validation):
     transform = {
     'train':
     transforms.Compose([
+        SmartCrop(),
         transforms.RandomAffine(degrees=CFG['affine_degrees'], translate=CFG['affine_translate'], scale=CFG['affine_scale'], fill=255),
         transforms.Resize(CFG['img_size']),
         transforms.CenterCrop(CFG['img_size']),
         transforms.RandomHorizontalFlip(),
         transforms.RandomVerticalFlip(),
+        # transforms.ColorJitter(**CFG['color_jitter']),
+        # HEDJitter(theta=CFG['hed_theta']),
         transforms.ToTensor(),
         transforms.Normalize(mean=CFG['img_color_mean'], std=CFG['img_color_std'])
     ]),
     'validation':
      transforms.Compose([
+        SmartCrop(),
         Affine(scale=1.2),
         transforms.Resize(CFG['img_size']),
         transforms.CenterCrop(CFG['img_size']),
