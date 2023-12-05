@@ -49,7 +49,7 @@ def get_tiles_datasets(CFG, train_image_dir, df_train, df_validation):
     'train':
     transforms.Compose([
         transforms.Resize(CFG['img_size']),
-        transforms.RandomAffine(degrees=CFG['affine_degrees'], translate=CFG['affine_translate'], scale=CFG['affine_scale'], fill=255),
+        transforms.RandomAffine(degrees=CFG['affine_degrees'], translate=CFG['affine_translate'], scale=CFG['affine_scale']),
         transforms.RandomHorizontalFlip(),
         transforms.RandomVerticalFlip(),
         transforms.ToTensor(),
