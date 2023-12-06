@@ -1,7 +1,6 @@
 import os
 from PIL import Image
 import numpy as np
-import scipy
 
 import torch
 from torch import nn
@@ -127,38 +126,36 @@ class SideCrop(nn.Module):
         return new_image
     
 class Affine(nn.Module):
-    def __init__(self, scale, fill=0):
+    def __init__(self, scale):
         super().__init__()
         self.scale = scale
-        self.fill = fill
     def forward(self, image):
-        new_image = transforms.functional.affine(image, angle=0, translate=(0, 0), scale=self.scale, shear=0, fill=self.fill)
+        new_image = transforms.functional.affine(image, angle=0, translate=(0, 0), scale=self.scale, shear=0, fill=255)
         return new_image
     
 class SmartCrop(nn.Module):
-    def split_crop(self, image, dir: str, th: int=0):
-        if dir == 'h':
-            labels, _ = scipy.ndimage.label(image.sum(axis=(0, 2)) > th)
-        elif dir == 'v':
-            labels, _ = scipy.ndimage.label(image.sum(axis=(1, 2)) > th)
-        unique, counts = np.unique(labels, return_counts=True)
-        counts = counts[unique!=0]
-        unique = unique[unique!=0]
-        larges_label = unique[np.argmax(counts)]
-        if dir == 'h':
-            image = image[:, labels==larges_label, :]
-        elif dir == 'v':
-            image = image[labels==larges_label, :, :]
-        return image
-
     def forward(self, image):
         image = np.array(image)
+        # Horizontal crop
+        x_noblack = np.where(image.sum(axis=(0, 2))!=0)[0][0]
+        image = image[:, x_noblack:, :]
+        x_black = np.where(image.sum(axis=(0, 2))==0)[0]
+        if x_black.size > 0 and x_black[0] > 512:
+            x_end = x_black[0]-1
+            image = image[:, :x_end, :]
 
-        # Iterative split and crop
-        image = self.split_crop(image, 'h')
-        image = self.split_crop(image, 'v')
-        image = self.split_crop(image, 'h')
-        image = self.split_crop(image, 'v')
+        # Vertical crop and black trimming
+        y_noblack = np.where(image.sum(axis=(1, 2))!=0)[0][0]
+        image = image[y_noblack:, :, :]
+        y_black = np.where(image.sum(axis=(1, 2))==0)[0]
+        if y_black.size > 0 and y_black[0] > 400:
+            y_end = y_black[0]-1
+            image = image[:y_end, :, :]
+
+        x_black = np.where(image.sum(axis=(0, 2))==0)[0]
+        if x_black.size > 0 and x_black[0] > 400:
+            x_end = x_black[0]-1
+            image = image[:, :x_end, :]
 
         black_bg = np.sum(image, axis=2) == 0
         image[black_bg, :] = 255
@@ -169,25 +166,25 @@ def get_datasets(CFG, train_image_dir, train_thumbnail_dir, df_train, df_validat
     transform = {
     'train':
     transforms.Compose([
-        HEDJitter(theta=CFG['hed_theta']),
         SmartCrop(),
         transforms.RandomAffine(degrees=CFG['affine_degrees'], translate=CFG['affine_translate'], scale=CFG['affine_scale'], fill=255),
         transforms.Resize(CFG['img_size']),
         transforms.CenterCrop(CFG['img_size']),
         transforms.RandomHorizontalFlip(),
         transforms.RandomVerticalFlip(),
-        # transforms.ColorJitter(**CFG['color_jitter']),
+        transforms.ColorJitter(**CFG['color_jitter']),
+        # HEDJitter(theta=CFG['hed_theta']),
         transforms.ToTensor(),
-        # transforms.Normalize(mean=CFG['img_color_mean'], std=CFG['img_color_std'])
+        transforms.Normalize(mean=CFG['img_color_mean'], std=CFG['img_color_std'])
     ]),
     'validation':
      transforms.Compose([
         SmartCrop(),
-        Affine(scale=np.mean(CFG['affine_scale']), fill=255),
+        Affine(scale=1.2),
         transforms.Resize(CFG['img_size']),
         transforms.CenterCrop(CFG['img_size']),
         transforms.ToTensor(),
-        # transforms.Normalize(mean=CFG['img_color_mean'], std=CFG['img_color_std'])
+        transforms.Normalize(mean=CFG['img_color_mean'], std=CFG['img_color_std'])
     ])}
     
     train_dataset = UBCDataset(df=df_train, 
