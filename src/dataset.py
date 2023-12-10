@@ -51,6 +51,7 @@ def get_tiles_datasets(CFG, train_image_dir, df_train, df_validation):
         transforms.RandomAffine(degrees=CFG['affine_degrees'], translate=CFG['affine_translate'], scale=CFG['affine_scale']),
         transforms.RandomHorizontalFlip(),
         transforms.RandomVerticalFlip(),
+        transforms.ColorJitter(**CFG['color_jitter']),
         transforms.ToTensor(),
         transforms.Normalize(mean=CFG['img_color_mean'], std=CFG['img_color_std'])
     ]),
@@ -173,7 +174,6 @@ def get_datasets(CFG, train_image_dir, train_thumbnail_dir, df_train, df_validat
         transforms.RandomHorizontalFlip(),
         transforms.RandomVerticalFlip(),
         transforms.ColorJitter(**CFG['color_jitter']),
-        # HEDJitter(theta=CFG['hed_theta']),
         transforms.ToTensor(),
         transforms.Normalize(mean=CFG['img_color_mean'], std=CFG['img_color_std'])
     ]),
@@ -241,6 +241,7 @@ def get_tumor_tiles_datasets(CFG, train_image_dir, df_train, df_validation):
         transforms.RandomAffine(degrees=CFG['affine_degrees'], translate=CFG['affine_translate'], scale=CFG['affine_scale']),
         transforms.RandomHorizontalFlip(),
         transforms.RandomVerticalFlip(),
+        transforms.ColorJitter(**CFG['color_jitter']),
         transforms.ToTensor(),
         transforms.Normalize(mean=CFG['img_color_mean'], std=CFG['img_color_std'])
     ]),
