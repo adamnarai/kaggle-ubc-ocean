@@ -47,7 +47,6 @@ def get_tiles_datasets(CFG, train_image_dir, df_train, df_validation):
     transform = {
     'train':
     transforms.Compose([
-        transforms.Resize(CFG['img_size']),
         transforms.RandomAffine(degrees=CFG['affine_degrees'], translate=CFG['affine_translate'], scale=CFG['affine_scale']),
         transforms.RandomHorizontalFlip(),
         transforms.RandomVerticalFlip(),
@@ -57,7 +56,6 @@ def get_tiles_datasets(CFG, train_image_dir, df_train, df_validation):
     ]),
     'validation':
      transforms.Compose([
-        transforms.Resize(CFG['img_size']),
         transforms.ToTensor(),
         transforms.Normalize(mean=CFG['img_color_mean'], std=CFG['img_color_std'])
     ])}
