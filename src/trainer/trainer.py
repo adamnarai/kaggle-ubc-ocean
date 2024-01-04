@@ -2,7 +2,7 @@ import os
 import time
 from tempfile import TemporaryDirectory
 import warnings
-from sklearn.metrics import balanced_accuracy_score
+from sklearn.metrics import accuracy_score, balanced_accuracy_score
 import numpy as np
 import wandb
 from tqdm import tqdm
@@ -10,7 +10,7 @@ from tqdm import tqdm
 import torch
 
 class Trainer:
-    def __init__(self, model, dataloaders, loss_fn, optimizer, scheduler, device, metric, num_epochs=10, wandb_log=False):
+    def __init__(self, model, dataloaders, loss_fn, optimizer, scheduler, device, state_filename, metric, num_epochs=10, wandb_log=False):
         self.model = model
         self.train_dataloader = dataloaders['train']
         self.test_dataloader = dataloaders['validation']
@@ -18,9 +18,12 @@ class Trainer:
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.device = device
+        self.state_filename = state_filename
         self.metric = metric
         self.num_epochs = num_epochs
         self.wandb_log = wandb_log
+        self.best_metric = 0
+        self.epoch_count = 0
 
     def train_epochs(self, num_epochs=None, validate=True):
         if num_epochs is not None:
@@ -36,8 +39,13 @@ class Trainer:
             train_loss = self.train()
             if validate:
                 test_loss, metric = self.test()
+                if metric > self.best_metric:
+                    self.best_metric = metric
+                    print(f"New best {self.metric}: {self.best_metric:.4f}\nSaving model to {self.state_filename}")
+                    self.save_state(self.state_filename.replace('.pt', '_best.pt'))
             else:
                 test_loss, metric = np.nan, np.nan
+                self.best_metric = np.nan
             self.scheduler.step()
             print(f"train loss: {train_loss:.4f}, test loss: {test_loss:.4f}, {self.metric}: {metric:.4f}\n")
             if self.wandb_log:
@@ -46,7 +54,8 @@ class Trainer:
         time_elapsed = time.time() - since
         print(f'Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s')
         print(f'Final {self.metric}: {metric:4f}\n')
-        return self.model, metric
+        self.epoch_count += self.num_epochs
+        return
     
     def unfreeze(self):
         for param in self.model.parameters():
@@ -92,9 +101,24 @@ class Trainer:
                     with warnings.catch_warnings():
                         warnings.simplefilter('ignore', category=UserWarning)
                         metric += balanced_accuracy_score(y.cpu().numpy(), preds.cpu().numpy())
+                elif self.metric == 'accuracy':
+                    with warnings.catch_warnings():
+                        warnings.simplefilter('ignore', category=UserWarning)
+                        metric += accuracy_score(y.cpu().numpy(), preds.cpu().numpy())
         test_loss /= num_batches
         metric /= num_batches
         return test_loss, metric
+    
+    def save_state(self, filename):
+        torch.save(self.model.state_dict(), filename)
+        return
+    
+    def load_state(self, filename):
+        self.model.load_state_dict(torch.load(filename))
+        return
+    
+    def get_model(self):
+        return self.model
     
 class BinaryTrainer:
     def __init__(self, model, dataloaders, loss_fn, optimizer, scheduler, device, metric, num_epochs=10, wandb_log=False):

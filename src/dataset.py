@@ -1,6 +1,8 @@
 import os
 from PIL import Image
 import numpy as np
+import glob
+import random
 
 import torch
 from torch import nn
@@ -52,7 +54,8 @@ def get_tiles_datasets(CFG, train_image_dir, df_train, df_validation):
         transforms.RandomVerticalFlip(),
         transforms.ColorJitter(**CFG['color_jitter']),
         transforms.ToTensor(),
-        transforms.Normalize(mean=CFG['img_color_mean'], std=CFG['img_color_std'])
+        transforms.Normalize(mean=CFG['img_color_mean'], std=CFG['img_color_std']),
+        transforms.RandomErasing(p=CFG['random_erasing_p'])
     ]),
     'validation':
      transforms.Compose([
@@ -255,6 +258,77 @@ def get_tumor_tiles_datasets(CFG, train_image_dir, df_train, df_validation):
                         transform=transform['train'])
     validation_dataset = UBCTumorTilesDataset(df=df_validation, 
                         image_dir=train_image_dir,
+                        transform=transform['validation'])
+    datasets = {'train': train_dataset, 'validation': validation_dataset}
+    return datasets
+
+class UBCMILDataset(Dataset):
+    """UBC OCEAN tiles dataset."""
+
+    def __init__(self, df, image_dir, sample_num, transform=None):
+        """
+        Arguments:
+            df (DataFrame): DataFrame of annotations.
+            image_dir (string): Directory with all the fullres images.
+            transform (callable, optional): Optional transform to be applied on a sample.
+            black_th (float): Tiles with black > black_th proportion of black pixels are discarded.
+        """
+        self.df = df
+        self.sample_num = sample_num
+        self.image_ids = self.df['image_id'].values
+        self.labels = self.df['label'].values
+        self.is_tma = self.df['is_tma'].values
+        self.image_dir = image_dir
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.df)
+
+    def __getitem__(self, idx):
+        image_id = self.image_ids[idx]
+        image_dir = os.path.join(self.image_dir, str(image_id))
+
+        image_path_list = glob.glob(os.path.join(image_dir, "*" + '.png'))
+        if len(image_path_list) < self.sample_num:
+            image_path_list = random.choices(image_path_list, k=self.sample_num)
+        image_list = []
+        for image_path in image_path_list:
+            image = Image.open(image_path)
+            if self.transform:
+                image = self.transform(image)
+            image_list.append(image)
+        image = torch.stack(image_list, dim=0)
+
+        label = self.labels[idx]
+
+        return image, label
+
+def get_mil_datasets(CFG, train_image_dir, df_train, df_validation):
+    transform = {
+    'train':
+    transforms.Compose([
+        transforms.Resize(CFG['img_size']),
+        transforms.RandomAffine(degrees=CFG['affine_degrees'], translate=CFG['affine_translate'], scale=CFG['affine_scale']),
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomVerticalFlip(),
+        transforms.ColorJitter(**CFG['color_jitter']),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=CFG['img_color_mean'], std=CFG['img_color_std'])
+    ]),
+    'validation':
+     transforms.Compose([
+        transforms.Resize(CFG['img_size']),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=CFG['img_color_mean'], std=CFG['img_color_std'])
+    ])}
+    
+    train_dataset = UBCMILDataset(df=df_train, 
+                        image_dir=train_image_dir,
+                        sample_num=CFG['tile_num'],
+                        transform=transform['train'])
+    validation_dataset = UBCMILDataset(df=df_validation, 
+                        image_dir=train_image_dir,
+                        sample_num=CFG['tile_num'],
                         transform=transform['validation'])
     datasets = {'train': train_dataset, 'validation': validation_dataset}
     return datasets
